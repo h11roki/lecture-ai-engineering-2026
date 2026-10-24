@@ -18,9 +18,9 @@ from google import genai
 from google.genai import errors
 
 from app.ask import DEFAULT_QUESTION
-from app.config import get_api_key
+from app.config import DEFAULT_MODEL, get_api_key
 
-MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"]
+MODELS = [DEFAULT_MODEL, "gemini-3.8-flash"]
 QUESTIONS = ["LoRAとは何ですか？", DEFAULT_QUESTION]
 
 
