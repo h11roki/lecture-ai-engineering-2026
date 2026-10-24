@@ -1,4 +1,4 @@
-"""第1回: 素のLLMに1回だけ質問するスクリプト。
+"""第1回: 素のLLMに質問するスクリプト。
 
 使い方:
     uv run python -m app.ask "LoRAとは何ですか？"
@@ -12,6 +12,7 @@
 """
 
 import argparse
+import contextlib
 
 from google import genai
 from google.genai import errors
@@ -28,9 +29,20 @@ def ask(chat: Chat, question: str) -> str:
 
     usage = response.usage_metadata
     if usage is not None:
-        print(f"[トークン] 入力 {usage.prompt_token_count} / 出力 {usage.candidates_token_count}\n")
+        print(
+            f"[トークン] 入力 {usage.prompt_token_count} / 出力 {usage.candidates_token_count}"
+            f" / 思考 {usage.thoughts_token_count or 0}\n"
+        )
 
     return response.text
+
+
+def converse(chat: Chat) -> None:
+    while question := input("\n> ").strip():
+        try:
+            print(ask(chat, question))
+        except errors.APIError as e:
+            print(api_error_message(e.code, e.message or ""))
 
 
 def main() -> None:
@@ -46,13 +58,13 @@ def main() -> None:
     print(f"[質問] {args.question}\n")
     try:
         print(ask(chat, args.question))
-        while args.chat and (question := input("\n> ").strip()):
-            print(ask(chat, question))
-    except EOFError:
-        pass
     except errors.APIError as e:
         print(api_error_message(e.code, e.message))
         raise SystemExit(1)
+
+    if args.chat:
+        with contextlib.suppress(EOFError):
+            converse(chat)
 
 
 if __name__ == "__main__":
