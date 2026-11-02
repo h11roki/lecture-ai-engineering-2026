@@ -27,15 +27,15 @@
     "format_rate": 0.09523809523809523,
     "content_rate": 0.0,
     "both_rate": 0.0,
-    "seconds": 37.2
+    "seconds": 42.0
   },
   "after": {
     "label": "after",
     "n": 21,
     "format_rate": 1.0,
-    "content_rate": 0.7619047619047619,
-    "both_rate": 0.7619047619047619,
-    "seconds": 46.5
+    "content_rate": 0.7142857142857143,
+    "both_rate": 0.7142857142857143,
+    "seconds": 48.5
   },
   "regressed": [],
   "knowledge": [

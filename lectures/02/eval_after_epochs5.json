@@ -3,9 +3,9 @@
     "label": "after",
     "n": 21,
     "format_rate": 1.0,
-    "content_rate": 0.7619047619047619,
-    "both_rate": 0.7619047619047619,
-    "seconds": 46.5
+    "content_rate": 0.7142857142857143,
+    "both_rate": 0.7142857142857143,
+    "seconds": 48.5
   },
   "rows": [
     {
@@ -100,7 +100,7 @@
     },
     {
       "question": "オフィスアワーの曜日と時間を教えてください",
-      "raw": "{\"answer\": \"質問は FAQ に記載がありません。確認が必要です。\", \"needs_review\": true}",
+      "raw": "{\"answer\": \"質問: オフィスアワーの曜日と時間を教えてください\", \"needs_review\": false}",
       "format_ok": true,
       "format_reason": "",
       "content_ok": false,
@@ -163,11 +163,11 @@
     },
     {
       "question": "課題の文字数に制限はありますか",
-      "raw": "{\"answer\": \"質問は FAQ に記載がありません。確認が必要です。\", \"needs_review\": true}",
+      "raw": "{\"answer\": \"質問: 課題の文字数に制限はありますか\", \"needs_review\": true}",
       "format_ok": true,
       "format_reason": "",
-      "content_ok": true,
-      "both_ok": true,
+      "content_ok": false,
+      "both_ok": false,
       "gold_needs_review": true
     },
     {
