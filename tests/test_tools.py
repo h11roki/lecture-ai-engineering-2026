@@ -1,6 +1,9 @@
 """ツールのテスト（LLMもAPIキーも使わない）。"""
 
 import json
+from datetime import UTC, datetime, tzinfo
+
+import pytest
 
 from app import tools
 
@@ -37,6 +40,50 @@ def test_search_reports_not_found():
 def test_lecture_summary():
     assert "エージェント" in tools.get_lecture_summary(3)
     assert "まだありません" in tools.get_lecture_summary(99)
+
+
+def test_quiz_asks_meaning_of_a_term_from_the_lecture():
+    quiz = json.loads(tools.make_quiz(2))
+    entry = next(t for t in tools.load_glossary() if t["definition"] == quiz["answer"])
+    assert entry["lecture"] == 2
+    assert quiz["question"] == f"「{entry['term']}」の意味は？"
+
+
+def test_quiz_reports_lecture_without_terms():
+    assert "用語集にありません" in tools.make_quiz(0)
+
+
+class _ClockAtUtc1530:
+    @staticmethod
+    def now(tz: tzinfo) -> datetime:
+        return datetime(2026, 11, 8, 15, 30, tzinfo=UTC).astimezone(tz)
+
+
+@pytest.fixture
+def clock_at_utc_1530(monkeypatch):
+    monkeypatch.setattr(tools, "datetime", _ClockAtUtc1530)
+
+
+@pytest.mark.usefixtures("clock_at_utc_1530")
+def test_learning_log_is_dated_in_japan_time(log_dir):
+    assert tools.save_learning_log("LoRA", "低ランク行列だけを学習する") == "learning_log/2026-11-09.md に保存しました。"
+    assert [p.name for p in log_dir.iterdir()] == ["2026-11-09.md"]
+    assert (log_dir / "2026-11-09.md").read_text(encoding="utf-8").startswith("## 00:30 LoRA\n\n低ランク行列")
+
+
+@pytest.mark.usefixtures("clock_at_utc_1530")
+def test_learning_log_appends_entries_to_the_same_day_file(log_dir):
+    tools.save_learning_log("LoRA", "低ランク行列だけを学習する")
+    tools.save_learning_log("QLoRA", "量子化したモデルに LoRA をかける")
+    [log] = log_dir.iterdir()
+    text = log.read_text(encoding="utf-8")
+    assert text.index("LoRA\n\n低ランク行列") < text.index("QLoRA\n\n量子化")
+
+
+@pytest.mark.usefixtures("clock_at_utc_1530")
+def test_learning_log_keeps_the_title_on_one_line(log_dir):
+    tools.save_learning_log(" LoRA\n補足 ", "本文")
+    assert (log_dir / "2026-11-09.md").read_text(encoding="utf-8").startswith("## 00:30 LoRA 補足\n\n本文")
 
 
 def test_default_question_of_lecture1_is_answerable_from_glossary():
