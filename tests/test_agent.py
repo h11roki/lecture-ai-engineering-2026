@@ -7,11 +7,12 @@ TestModel は実際のLLMを呼ばない偽モデルで、登録されたツー�
 
 import pytest
 from pydantic_ai import DeferredToolRequests, ToolDenied
-from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
+from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
 from app import tools
-from app.agent import agent, ask_approvals
+from app.agent import MAX_APPROVAL_ROUNDS, agent, ask_approvals, run_with_approvals
 
 BASE_TOOLS = {"search_glossary", "get_lecture_summary"}
 
@@ -50,15 +51,15 @@ def log_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _resume_learning_log_run(approve: bool):
-    with agent.override(model=TestModel(call_tools=["save_learning_log"])):
-        waiting = agent.run_sync("今日学んだことを記録して")
-        assert isinstance(waiting.output, DeferredToolRequests)
-        [call] = waiting.output.approvals
-        return agent.run_sync(
-            message_history=waiting.all_messages(),
-            deferred_tool_results=waiting.output.build_results(approvals={call.tool_call_id: approve}),
-        )
+def _answer_every_approval_with(monkeypatch, answer: str) -> list[str]:
+    prompts: list[str] = []
+
+    def fake_input(prompt: str) -> str:
+        prompts.append(prompt)
+        return answer
+
+    monkeypatch.setattr("builtins.input", fake_input)
+    return prompts
 
 
 def test_learning_log_waits_for_approval_before_saving(log_dir):
@@ -68,15 +69,29 @@ def test_learning_log_waits_for_approval_before_saving(log_dir):
     assert not any(log_dir.iterdir())
 
 
-def test_learning_log_is_saved_when_approved(log_dir):
-    result = _resume_learning_log_run(approve=True)
+def test_learning_log_is_saved_when_approved(log_dir, monkeypatch):
+    _answer_every_approval_with(monkeypatch, "y")
+    result = run_with_approvals(agent, "今日学んだことを記録して", TestModel(call_tools=["save_learning_log"]))
     assert isinstance(result.output, str)
     assert len(list(log_dir.glob("*.md"))) == 1
 
 
-def test_learning_log_is_not_saved_when_denied(log_dir):
-    result = _resume_learning_log_run(approve=False)
+def test_learning_log_is_not_saved_when_denied(log_dir, monkeypatch):
+    _answer_every_approval_with(monkeypatch, "n")
+    result = run_with_approvals(agent, "今日学んだことを記録して", TestModel(call_tools=["save_learning_log"]))
     assert isinstance(result.output, str)
+    assert not any(log_dir.iterdir())
+
+
+def test_approval_rounds_stop_when_model_keeps_asking_after_denial(log_dir, monkeypatch):
+    prompts = _answer_every_approval_with(monkeypatch, "n")
+
+    def always_save(messages, info) -> ModelResponse:
+        return ModelResponse(parts=[ToolCallPart("save_learning_log", {"title": "LoRA", "body": "要点"})])
+
+    with pytest.raises(SystemExit):
+        run_with_approvals(agent, "今日学んだことを記録して", FunctionModel(always_save))
+    assert len(prompts) == MAX_APPROVAL_ROUNDS
     assert not any(log_dir.iterdir())
 
 
@@ -87,13 +102,13 @@ def _approval_request() -> DeferredToolRequests:
 
 @pytest.mark.parametrize("answer", ["y", "Y", "yes"])
 def test_ask_approvals_approves_on_yes(monkeypatch, answer):
-    monkeypatch.setattr("builtins.input", lambda _: answer)
+    _answer_every_approval_with(monkeypatch, answer)
     assert ask_approvals(_approval_request()).approvals == {"call-1": True}
 
 
 @pytest.mark.parametrize("answer", ["", "n", "はい"])
 def test_ask_approvals_denies_unless_yes(monkeypatch, answer):
-    monkeypatch.setattr("builtins.input", lambda _: answer)
+    _answer_every_approval_with(monkeypatch, answer)
     assert isinstance(ask_approvals(_approval_request()).approvals["call-1"], ToolDenied)
 
 
