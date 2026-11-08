@@ -6,14 +6,13 @@
 
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import cache
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 LOG_DIR = DATA_DIR.parent / "learning_log"
-LOG_TIMEZONE = ZoneInfo("Asia/Tokyo")
+LOG_TIMEZONE = timezone(timedelta(hours=9), "JST")
 MAX_RESULTS = 3
 
 
