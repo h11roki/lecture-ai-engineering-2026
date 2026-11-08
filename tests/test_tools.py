@@ -1,7 +1,9 @@
 """ツールのテスト（LLMもAPIキーも使わない）。"""
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime, tzinfo
+
+import pytest
 
 from app import tools
 
@@ -51,16 +53,36 @@ def test_quiz_reports_lecture_without_terms():
     assert "用語集にありません" in tools.make_quiz(0)
 
 
-def test_learning_log_appends_entries_to_todays_file(tmp_path, monkeypatch):
-    log_dir = tmp_path / "learning_log"
-    monkeypatch.setattr(tools, "LOG_DIR", log_dir)
+class _ClockAtUtc1530:
+    @staticmethod
+    def now(tz: tzinfo) -> datetime:
+        return datetime(2026, 11, 8, 15, 30, tzinfo=UTC).astimezone(tz)
+
+
+@pytest.fixture
+def log_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(tools, "datetime", _ClockAtUtc1530)
+    monkeypatch.setattr(tools, "LOG_DIR", tmp_path / "learning_log")
+    return tmp_path / "learning_log"
+
+
+def test_learning_log_is_dated_in_japan_time(log_dir):
+    tools.save_learning_log("LoRA", "低ランク行列だけを学習する")
+    assert [p.name for p in log_dir.iterdir()] == ["2026-11-09.md"]
+    assert (log_dir / "2026-11-09.md").read_text(encoding="utf-8").startswith("## 00:30 LoRA\n\n低ランク行列")
+
+
+def test_learning_log_appends_entries_to_the_same_day_file(log_dir):
     tools.save_learning_log("LoRA", "低ランク行列だけを学習する")
     tools.save_learning_log("QLoRA", "量子化したモデルに LoRA をかける")
-
     [log] = log_dir.iterdir()
-    assert log.name == f"{datetime.now(tools.LOG_TIMEZONE):%Y-%m-%d}.md"
     text = log.read_text(encoding="utf-8")
     assert text.index("LoRA\n\n低ランク行列") < text.index("QLoRA\n\n量子化")
+
+
+def test_learning_log_keeps_the_title_on_one_line(log_dir):
+    tools.save_learning_log(" LoRA\n補足 ", "本文")
+    assert (log_dir / "2026-11-09.md").read_text(encoding="utf-8").startswith("## 00:30 LoRA 補足\n\n本文")
 
 
 def test_default_question_of_lecture1_is_answerable_from_glossary():

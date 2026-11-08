@@ -108,8 +108,9 @@ def save_learning_log(title: str, body: str) -> str:
     title には記録の見出しを、body には記録する内容を Markdown で入れる。
     """
     now = datetime.now(LOG_TIMEZONE)
+    heading = " ".join(title.split())
     LOG_DIR.mkdir(exist_ok=True)
     path = LOG_DIR / f"{now:%Y-%m-%d}.md"
     with path.open("a", encoding="utf-8") as f:
-        f.write(f"## {now:%H:%M} {title}\n\n{body.strip()}\n\n")
+        f.write(f"## {now:%H:%M} {heading}\n\n{body.strip()}\n\n")
     return f"learning_log/{path.name} に保存しました。"
