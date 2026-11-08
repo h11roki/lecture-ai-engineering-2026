@@ -66,7 +66,7 @@ def clock_at_utc_1530(monkeypatch):
 
 @pytest.mark.usefixtures("clock_at_utc_1530")
 def test_learning_log_is_dated_in_japan_time(log_dir):
-    tools.save_learning_log("LoRA", "低ランク行列だけを学習する")
+    assert tools.save_learning_log("LoRA", "低ランク行列だけを学習する") == "learning_log/2026-11-09.md に保存しました。"
     assert [p.name for p in log_dir.iterdir()] == ["2026-11-09.md"]
     assert (log_dir / "2026-11-09.md").read_text(encoding="utf-8").startswith("## 00:30 LoRA\n\n低ランク行列")
 

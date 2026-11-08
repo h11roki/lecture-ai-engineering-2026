@@ -112,4 +112,4 @@ def save_learning_log(title: str, body: str) -> str:
     path = LOG_DIR / f"{now:%Y-%m-%d}.md"
     with path.open("a", encoding="utf-8") as f:
         f.write(f"## {now:%H:%M} {heading}\n\n{body.strip()}\n\n")
-    return f"learning_log/{path.name} に保存しました。"
+    return f"{path.relative_to(LOG_DIR.parent).as_posix()} に保存しました。"
