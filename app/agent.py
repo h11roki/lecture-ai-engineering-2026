@@ -119,7 +119,8 @@ def ask_approvals(requests: DeferredToolRequests) -> DeferredToolResults:
     for call in requests.approvals:
         print(f"\n[approval] {call.tool_name}")
         for name, value in call.args_as_dict().items():
-            print(f"  {name}: " + str(value).replace("\n", "\n    "))
+            indented = str(value).replace("\n", "\n    ")
+            print(f"  {name}: {indented}")
         try:
             answer = input("実行してよいですか？ [y/N] ")
         except EOFError:
