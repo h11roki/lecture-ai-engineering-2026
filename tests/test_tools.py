@@ -1,6 +1,7 @@
 """ツールのテスト（LLMもAPIキーも使わない）。"""
 
 import json
+from datetime import datetime
 
 from app import tools
 
@@ -48,6 +49,18 @@ def test_quiz_asks_meaning_of_a_term_from_the_lecture():
 
 def test_quiz_reports_lecture_without_terms():
     assert "用語集にありません" in tools.make_quiz(0)
+
+
+def test_learning_log_appends_entries_to_todays_file(tmp_path, monkeypatch):
+    log_dir = tmp_path / "learning_log"
+    monkeypatch.setattr(tools, "LOG_DIR", log_dir)
+    tools.save_learning_log("LoRA", "低ランク行列だけを学習する")
+    tools.save_learning_log("QLoRA", "量子化したモデルに LoRA をかける")
+
+    [log] = log_dir.iterdir()
+    assert log.name == f"{datetime.now(tools.LOG_TIMEZONE):%Y-%m-%d}.md"
+    text = log.read_text(encoding="utf-8")
+    assert text.index("LoRA\n\n低ランク行列") < text.index("QLoRA\n\n量子化")
 
 
 def test_default_question_of_lecture1_is_answerable_from_glossary():

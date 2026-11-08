@@ -5,11 +5,13 @@ TestModel は実際のLLMを呼ばない偽モデルで、登録されたツー�
 「ツールが登録され、呼ばれ、結果がモデルに戻るか」を確かめられる。
 """
 
-from pydantic_ai import DeferredToolRequests
+import pytest
+from pydantic_ai import DeferredToolRequests, ToolDenied
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 from pydantic_ai.models.test import TestModel
 
-from app.agent import agent
+from app import tools
+from app.agent import agent, ask_approvals
 
 BASE_TOOLS = {"search_glossary", "get_lecture_summary"}
 
@@ -40,3 +42,64 @@ def test_glossary_result_reaches_the_model():
         result = agent.run_sync("RAGとは？")
     returns = _parts(result, ToolReturnPart)
     assert returns and returns[0].tool_name == "search_glossary"
+
+
+@pytest.fixture
+def log_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(tools, "LOG_DIR", tmp_path)
+    return tmp_path
+
+
+def _resume_learning_log_run(approve: bool):
+    with agent.override(model=TestModel(call_tools=["save_learning_log"])):
+        waiting = agent.run_sync("今日学んだことを記録して")
+        assert isinstance(waiting.output, DeferredToolRequests)
+        [call] = waiting.output.approvals
+        return agent.run_sync(
+            message_history=waiting.all_messages(),
+            deferred_tool_results=waiting.output.build_results(approvals={call.tool_call_id: approve}),
+        )
+
+
+def test_learning_log_waits_for_approval_before_saving(log_dir):
+    with agent.override(model=TestModel(call_tools=["save_learning_log"])):
+        result = agent.run_sync("今日学んだことを記録して")
+    assert isinstance(result.output, DeferredToolRequests)
+    assert not any(log_dir.iterdir())
+
+
+def test_learning_log_is_saved_when_approved(log_dir):
+    result = _resume_learning_log_run(approve=True)
+    assert isinstance(result.output, str)
+    assert len(list(log_dir.glob("*.md"))) == 1
+
+
+def test_learning_log_is_not_saved_when_denied(log_dir):
+    result = _resume_learning_log_run(approve=False)
+    assert isinstance(result.output, str)
+    assert not any(log_dir.iterdir())
+
+
+def _approval_request() -> DeferredToolRequests:
+    call = ToolCallPart("save_learning_log", {"title": "LoRA", "body": "要点"}, tool_call_id="call-1")
+    return DeferredToolRequests(approvals=[call])
+
+
+@pytest.mark.parametrize("answer", ["y", "Y", "yes"])
+def test_ask_approvals_approves_on_yes(monkeypatch, answer):
+    monkeypatch.setattr("builtins.input", lambda _: answer)
+    assert ask_approvals(_approval_request()).approvals == {"call-1": True}
+
+
+@pytest.mark.parametrize("answer", ["", "n", "はい"])
+def test_ask_approvals_denies_unless_yes(monkeypatch, answer):
+    monkeypatch.setattr("builtins.input", lambda _: answer)
+    assert isinstance(ask_approvals(_approval_request()).approvals["call-1"], ToolDenied)
+
+
+def test_ask_approvals_denies_when_input_is_closed(monkeypatch):
+    def closed_input(_):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", closed_input)
+    assert isinstance(ask_approvals(_approval_request()).approvals["call-1"], ToolDenied)
