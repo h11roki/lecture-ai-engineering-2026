@@ -55,8 +55,8 @@
 - やったこと：
   - `app/tools.py` に `save_learning_log(title: str, body: str) -> str` を作った。`learning_log/YYYY-MM-DD.md` に `## HH:MM 見出し` を付けて追記する（1日1ファイル）。日付は Asia/Tokyo で決める。Codespaces の時計は UTC なので、そのままだと日本の朝9時前の記録が前日のファイルに入るため。`learning_log/` は講座の `.gitignore` で共有しない設定になっている
   - `app/agent.py` で `agent.tool_plain(requires_approval=True)(tools.save_learning_log)` と登録し、`output_type=[str, DeferredToolRequests]` にした。`tool_plain(関数, requires_approval=True)` でも動くが、型定義ではキーワードを付けるときは `tool_plain(...)(関数)` の形なので、そちらにした
-  - CLI は、出力が `DeferredToolRequests` の間、`approvals` の呼び出しごとにツール名と引数を見せて `実行してよいですか？ [y/N]` と聞く。`y` / `yes` 以外と、入力が閉じている（EOF）ときは `ToolDenied("利用者が実行を断りました。")` にする。答えを `DeferredToolResults` にし、`message_history=result.all_messages()` と `usage=result.usage` と一緒に渡して続きを実行する。`usage` を渡すのは、`--trace` の `requests` を最初からの合計にするため
-  - テストを足した：承認待ちで止まってファイルが無いこと、承認すると1ファイルできること、断るとできないこと、`ask_approvals` が `y`・`Y`・`yes` だけを承認し、空・`n`・`はい`・EOF を断ること、同じ日の記録が1ファイルに順に追記されること。`requires_approval=True` を外すと、承認まわりのテストが3件落ちることも確かめた
+  - CLI は、出力が `DeferredToolRequests` の間、`approvals` の呼び出しごとにツール名と引数を見せて `実行してよいですか？ [y/N]` と聞く。`y` / `yes` 以外と、入力が閉じている（EOF）ときは `ToolDenied("利用者が実行を断りました。")` にする。答えを `DeferredToolResults` にし、`message_history=result.all_messages()` と `usage=result.usage` と一緒に渡して続きを実行する。`usage` を渡すのは、`--trace` の `requests` を最初からの合計にするため。断られた保存をモデルが求め直し続けると終わらないので、この往復は3回（`MAX_APPROVAL_ROUNDS`）までにした
+  - テストを足した：承認待ちで止まってファイルが無いこと、承認すると1ファイルできること、断るとできないこと、断られても保存を求め続けるモデルでは聞くのが3回で止まること、`ask_approvals` が `y`・`Y`・`yes` だけを承認し、空・`n`・`はい`・EOF を断ること、日付が日本時間で決まること（時計を UTC 15:30 に固定すると翌日のファイルになる）、同じ日の記録が1ファイルに順に追記されること。`requires_approval=True` を外すと、承認まわりのテストが落ちることも確かめた
 - 結果：
   - 承認した場合（`echo y | uv run python -m app.agent --trace "LoRAについて今日学んだことを、用語集の定義をもとに記録して"`）。`requests` は 3 で、検索を依頼 → 保存を依頼して承認待ちで止まる → 承認後に保存の結果を見て答える、の順だった。`learning_log/2026-11-08.md` には `## 20:37 LoRAについての学習記録` の下に body がそのまま入った
 
@@ -83,7 +83,8 @@
 - 気づき・疑問：
   - 承認が要るかどうかは、ツールの関数ではなく、登録するときの `requires_approval=True` で決まる。関数は普通にファイルに書くだけで、「止める・聞く・続きを実行する」はエージェントと CLI の側にある
   - 承認は利用者だけでなく、テストも守っていた。`requires_approval=True` を外して試したとき、既存のテスト（TestModel が全部のツールをダミーの引数で呼ぶ）が、本物の `learning_log/` に `## 20:36 a` という記録を書いた
-  - 疑問：断られたあと、モデルが同じ保存をもう一度依頼してきたら、今の CLI はもう一度聞く。何度も聞き直さないよう、断った内容を覚えておくべきか
+  - 断られたあとにモデルが同じ保存をもう一度依頼すると、CLI はもう一度聞く。入力が閉じていると自動で断り続けて空回りするので、往復を3回までにした。実際の実行では、断られたあとに求め直した回は無かった
+  - 疑問：上限で止める代わりに、断った内容を覚えておいて、同じ依頼は聞かずに断るほうがよいか
 
 ### 発展（a）：ADK で組み立て直す
 
