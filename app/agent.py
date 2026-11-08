@@ -48,6 +48,7 @@ agent.tool_plain(tools.make_quiz)
 agent.tool_plain(requires_approval=True)(tools.save_learning_log)
 
 MAX_APPROVAL_ROUNDS = 3
+HIDDEN_CHAR_CATEGORIES = ("C", "Zl", "Zp")
 
 # 第5回: 使う MCP サーバーの設定ファイル。Claude Desktop や Cursor と同じ "mcpServers" 形式
 MCP_CONFIG = Path(__file__).resolve().parent / "mcp_servers.json"
@@ -115,9 +116,10 @@ def print_trace(result) -> None:
 
 
 def reveal_control_chars(text: str) -> str:
-    """改行以外の制御文字（\\r や端末のエスケープ \\x1b など）を、そのままの見える形にする。"""
+    """改行以外の制御文字と行区切り（\\r、端末のエスケープ \\x1b、\\u2028 など）を、そのままの見える形にする。"""
     return "".join(
-        repr(c)[1:-1] if c != "\n" and unicodedata.category(c).startswith("C") else c for c in text
+        repr(c)[1:-1] if c != "\n" and unicodedata.category(c).startswith(HIDDEN_CHAR_CATEGORIES) else c
+        for c in text
     )
 
 
