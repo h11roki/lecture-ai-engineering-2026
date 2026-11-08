@@ -112,6 +112,13 @@ def test_ask_approvals_denies_unless_yes(monkeypatch, answer):
     assert isinstance(ask_approvals(_approval_request()).approvals["call-1"], ToolDenied)
 
 
+def test_ask_approvals_shows_control_characters_hidden_in_arguments(monkeypatch, capsys):
+    _answer_every_approval_with(monkeypatch, "n")
+    call = ToolCallPart("save_learning_log", {"title": "LoRA", "body": "要点\r\x1b[2K隠した文\n次の行"}, tool_call_id="c")
+    ask_approvals(DeferredToolRequests(approvals=[call]))
+    assert "要点\\r\\x1b[2K隠した文\n    次の行" in capsys.readouterr().out
+
+
 def test_ask_approvals_denies_when_input_is_closed(monkeypatch):
     def closed_input(_):
         raise EOFError

@@ -15,6 +15,7 @@
 import argparse
 import inspect
 import json
+import unicodedata
 from pathlib import Path
 
 from pydantic_ai import Agent, AgentRunResult, DeferredToolRequests, DeferredToolResults, ToolDenied
@@ -113,13 +114,20 @@ def print_trace(result) -> None:
     print(f"[usage] {result.usage}")
 
 
+def reveal_control_chars(text: str) -> str:
+    """改行以外の制御文字（\\r や端末のエスケープ \\x1b など）を、そのままの見える形にする。"""
+    return "".join(
+        repr(c)[1:-1] if c != "\n" and unicodedata.category(c).startswith("C") else c for c in text
+    )
+
+
 def ask_approvals(requests: DeferredToolRequests) -> DeferredToolResults:
     """承認が必要なツール呼び出しを1つずつ見せ、実行してよいかを利用者に聞く。既定は「実行しない」。"""
     approvals: dict[str, bool | ToolDenied] = {}
     for call in requests.approvals:
         print(f"\n[approval] {call.tool_name}")
         for name, value in call.args_as_dict().items():
-            indented = str(value).replace("\n", "\n    ")
+            indented = reveal_control_chars(str(value)).replace("\n", "\n    ")
             print(f"  {name}: {indented}")
         try:
             answer = input("実行してよいですか？ [y/N] ")
