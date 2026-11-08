@@ -88,7 +88,7 @@
 
 ### 発展（a）：ADK で組み立て直す
 
-- やったこと：`adk_agent/glossary_agent/agent.py` と `__init__.py`（`from . import agent` の1行）を作った。INSTRUCTIONS と search_glossary・get_lecture_summary・make_quiz は `app/` から import し、`app/` は変えていない。モデル名は `app.config.MODEL`（既定は gemini-3.5-flash-lite）を使い、Pydantic AI 版と同じモデルにした。google-adk 2.14.0 を `uv run --with google-adk` で足して動かした。比べやすいよう、`adk run --in_memory --jsonl adk_agent/glossary_agent "質問"` で1問ずつ流し、JSONL のイベントからツール呼び出し、LLM の呼び出し回数、トークン数を数えた。演習と同じ3問を3回ずつと、対話モードで2ターンの会話を試した
+- やったこと：`adk_agent/glossary_agent/agent.py` と `__init__.py`（`from . import agent` の1行）を作った。INSTRUCTIONS と search_glossary・get_lecture_summary・make_quiz は `app/` から import し、`app/` は変えていない。モデル名は `app.config.MODEL`（既定は gemini-3.5-flash-lite）を使い、Pydantic AI 版と同じモデルにした。google-adk 2.14.0 を `uv run --with google-adk` で足して動かした。比べやすいよう、`PYTHONPATH=. uv run --with google-adk adk run --in_memory --jsonl adk_agent/glossary_agent "質問"` で1問ずつ流し（`--in_memory` はセッションの DB をフォルダに書かない指定）、JSONL のイベントからツール呼び出し、LLM の呼び出し回数、トークン数を数えた。演習と同じ3問を3回ずつと、対話モードで2ターンの会話を試した
 
   ```python
   root_agent = Agent(
