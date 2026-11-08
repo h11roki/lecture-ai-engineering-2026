@@ -60,18 +60,18 @@ class _ClockAtUtc1530:
 
 
 @pytest.fixture
-def log_dir(tmp_path, monkeypatch):
+def clock_at_utc_1530(monkeypatch):
     monkeypatch.setattr(tools, "datetime", _ClockAtUtc1530)
-    monkeypatch.setattr(tools, "LOG_DIR", tmp_path / "learning_log")
-    return tmp_path / "learning_log"
 
 
+@pytest.mark.usefixtures("clock_at_utc_1530")
 def test_learning_log_is_dated_in_japan_time(log_dir):
     tools.save_learning_log("LoRA", "低ランク行列だけを学習する")
     assert [p.name for p in log_dir.iterdir()] == ["2026-11-09.md"]
     assert (log_dir / "2026-11-09.md").read_text(encoding="utf-8").startswith("## 00:30 LoRA\n\n低ランク行列")
 
 
+@pytest.mark.usefixtures("clock_at_utc_1530")
 def test_learning_log_appends_entries_to_the_same_day_file(log_dir):
     tools.save_learning_log("LoRA", "低ランク行列だけを学習する")
     tools.save_learning_log("QLoRA", "量子化したモデルに LoRA をかける")
@@ -80,6 +80,7 @@ def test_learning_log_appends_entries_to_the_same_day_file(log_dir):
     assert text.index("LoRA\n\n低ランク行列") < text.index("QLoRA\n\n量子化")
 
 
+@pytest.mark.usefixtures("clock_at_utc_1530")
 def test_learning_log_keeps_the_title_on_one_line(log_dir):
     tools.save_learning_log(" LoRA\n補足 ", "本文")
     assert (log_dir / "2026-11-09.md").read_text(encoding="utf-8").startswith("## 00:30 LoRA 補足\n\n本文")

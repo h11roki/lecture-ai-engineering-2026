@@ -11,7 +11,6 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from app import tools
 from app.agent import MAX_APPROVAL_ROUNDS, agent, ask_approvals, run_with_approvals
 
 BASE_TOOLS = {"search_glossary", "get_lecture_summary"}
@@ -45,12 +44,6 @@ def test_glossary_result_reaches_the_model():
     assert returns and returns[0].tool_name == "search_glossary"
 
 
-@pytest.fixture
-def log_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr(tools, "LOG_DIR", tmp_path)
-    return tmp_path
-
-
 def _answer_every_approval_with(monkeypatch, answer: str) -> list[str]:
     prompts: list[str] = []
 
@@ -66,7 +59,7 @@ def test_learning_log_waits_for_approval_before_saving(log_dir):
     with agent.override(model=TestModel(call_tools=["save_learning_log"])):
         result = agent.run_sync("今日学んだことを記録して")
     assert isinstance(result.output, DeferredToolRequests)
-    assert not any(log_dir.iterdir())
+    assert not log_dir.exists()
 
 
 def test_learning_log_is_saved_when_approved(log_dir, monkeypatch):
@@ -80,7 +73,7 @@ def test_learning_log_is_not_saved_when_denied(log_dir, monkeypatch):
     _answer_every_approval_with(monkeypatch, "n")
     result = run_with_approvals(agent, "今日学んだことを記録して", TestModel(call_tools=["save_learning_log"]))
     assert isinstance(result.output, str)
-    assert not any(log_dir.iterdir())
+    assert not log_dir.exists()
 
 
 def test_approval_rounds_stop_when_model_keeps_asking_after_denial(log_dir, monkeypatch):
@@ -92,7 +85,7 @@ def test_approval_rounds_stop_when_model_keeps_asking_after_denial(log_dir, monk
     with pytest.raises(SystemExit):
         run_with_approvals(agent, "今日学んだことを記録して", FunctionModel(always_save))
     assert len(prompts) == MAX_APPROVAL_ROUNDS
-    assert not any(log_dir.iterdir())
+    assert not log_dir.exists()
 
 
 def _approval_request() -> DeferredToolRequests:
