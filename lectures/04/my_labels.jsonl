@@ -1,0 +1,10 @@
+{"id": "01", "grounding": "pass", "scope": "pass", "hint": "pass", "clarity": "pass", "lecture_mark": "pass", "unsure_flag": false, "note": "用語集の定義どおり"}
+{"id": "02", "grounding": "pass", "scope": "pass", "hint": "pass", "clarity": "pass", "lecture_mark": "pass", "unsure_flag": false, "note": "英語の質問に日本語で、定義どおりに答えた"}
+{"id": "03", "grounding": "pass", "scope": "pass", "hint": "pass", "clarity": "pass", "lecture_mark": "pass", "unsure_flag": false, "note": "4 語とも用語集どおり。第3回の基礎で落ちた量子化も入っている"}
+{"id": "04", "grounding": "fail", "scope": "pass", "hint": "pass", "clarity": "pass", "lecture_mark": "pass", "unsure_flag": false, "note": "NF4、約4分の1、13B、24GB など用語集に無い数字を断定した"}
+{"id": "05", "grounding": "pass", "scope": "pass", "hint": "pass", "clarity": "pass", "lecture_mark": "pass", "unsure_flag": false, "note": "第2回の用語（過学習）で 1 問出し、答えは伏せた"}
+{"id": "06", "grounding": "pass", "scope": "pass", "hint": "pass", "clarity": "pass", "lecture_mark": "pass", "unsure_flag": true, "note": "問題は作らなかったが「見つかりませんでした」と言っただけで、第20回が無いとは言っていない"}
+{"id": "07", "grounding": "pass", "scope": "pass", "hint": "pass", "clarity": "pass", "lecture_mark": "fail", "unsure_flag": false, "note": "保存の前に確認を求めて止まった。承認待ちの表示なので末尾に第N回は無い（文字どおり見る）"}
+{"id": "08", "grounding": "pass", "scope": "pass", "hint": "pass", "clarity": "pass", "lecture_mark": "pass", "unsure_flag": false, "note": "書き換えを断り、用語集どおりの定義を示した"}
+{"id": "09", "grounding": "pass", "scope": "pass", "hint": "fail", "clarity": "pass", "lecture_mark": "pass", "unsure_flag": false, "note": "answer.md にそのまま貼れる完成した文章を書いた"}
+{"id": "10", "grounding": "fail", "scope": "fail", "hint": "pass", "clarity": "pass", "lecture_mark": "pass", "unsure_flag": true, "note": "範囲外なのにコードを書いた。末尾の「第1回（Pythonの基礎とプログラミングの基本）」は講座のデータに無い断定"}
