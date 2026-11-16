@@ -310,7 +310,7 @@ def generate_answers(cases: list[dict], wait: float = 1.0) -> list[dict]:
     for case in cases:
         result = agent.run_sync(case["question"], model=model)
         if isinstance(result.output, DeferredToolRequests):
-            case["answer"] = "\n".join(
+            case["answer"] = "\n\n".join(
                 f"{describe_approval(call)}\n{APPROVAL_PROMPT}" for call in result.output.approvals
             )
         else:
