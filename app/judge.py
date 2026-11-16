@@ -302,11 +302,8 @@ def compare_labels(a: dict[str, dict], b: dict[str, dict], name_a: str, name_b: 
 
 # ---------------------------------------------------------------- 回答の生成（宿題・実装）
 def generate_answers(cases: list[dict], wait: float = 1.0) -> list[dict]:
-    """評価セットの各質問を自分のエージェント（app.agent）に投げ、回答を埋める。
-
-    承認が必要なツールで止まったときは、利用者に確認を求めた内容（[承認待ち] ツール名(引数)）を回答にする。
-    """
-    from app.agent import agent, build_model
+    """評価セットの各質問を自分のエージェント（app.agent）に投げ、回答を埋める。"""
+    from app.agent import APPROVAL_PROMPT, agent, build_model, describe_approval
 
     model = build_model()
     print(f"回答を生成中 {len(cases)} 件 ", end="", flush=True)
@@ -314,7 +311,7 @@ def generate_answers(cases: list[dict], wait: float = 1.0) -> list[dict]:
         result = agent.run_sync(case["question"], model=model)
         if isinstance(result.output, DeferredToolRequests):
             case["answer"] = "\n".join(
-                f"[承認待ち] {call.tool_name}({call.args_as_json_str()})" for call in result.output.approvals
+                f"{describe_approval(call)}\n{APPROVAL_PROMPT}" for call in result.output.approvals
             )
         else:
             case["answer"] = str(result.output)
