@@ -4,6 +4,8 @@
 「採点 → 人のラベルとの比較 → 要確認・不一致の集計」が通ることを確かめる。
 """
 
+from pydantic_ai.models.test import TestModel
+
 from app import judge
 from app.judge import (
     ALL_CRITERIA,
@@ -12,6 +14,7 @@ from app.judge import (
     build_judge,
     build_test_model,
     check_lecture_mark,
+    generate_answers,
     judge_cases,
     load_labels,
     overall,
@@ -68,3 +71,10 @@ def test_judge_pipeline_with_fake_model():
     assert summary["coverage"]["covered"] + len({r["id"] for r in summary["review"]}) == 10
     for m in summary["mismatches"]:
         assert m["kind"] in ("見逃し", "過検出")
+
+
+def test_generated_answer_shows_the_pending_approval(monkeypatch, log_dir):
+    monkeypatch.setattr("app.agent.build_model", lambda: TestModel(call_tools=["save_learning_log"]))
+    [case] = generate_answers([{"id": "01", "question": "LoRAについて学んだことを記録して"}], wait=0)
+    assert case["answer"].startswith("[承認待ち] save_learning_log({")
+    assert not log_dir.exists()
