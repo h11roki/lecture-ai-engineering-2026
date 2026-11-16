@@ -49,6 +49,7 @@ agent.tool_plain(requires_approval=True)(tools.save_learning_log)
 
 MAX_APPROVAL_ROUNDS = 3
 HIDDEN_CHAR_CATEGORIES = ("C", "Zl", "Zp")
+APPROVAL_PROMPT = "実行してよいですか？ [y/N]"
 
 # 第5回: 使う MCP サーバーの設定ファイル。Claude Desktop や Cursor と同じ "mcpServers" 形式
 MCP_CONFIG = Path(__file__).resolve().parent / "mcp_servers.json"
@@ -123,16 +124,22 @@ def reveal_control_chars(text: str) -> str:
     )
 
 
+def describe_approval(call: ToolCallPart) -> str:
+    """承認を求めるツール呼び出しを、利用者に見せる形（ツール名と、引数を1つずつ）にする。"""
+    lines = [f"[approval] {call.tool_name}"]
+    for name, value in call.args_as_dict().items():
+        indented = reveal_control_chars(str(value)).replace("\n", "\n    ")
+        lines.append(f"  {name}: {indented}")
+    return "\n".join(lines)
+
+
 def ask_approvals(requests: DeferredToolRequests) -> DeferredToolResults:
     """承認が必要なツール呼び出しを1つずつ見せ、実行してよいかを利用者に聞く。既定は「実行しない」。"""
     approvals: dict[str, bool | ToolDenied] = {}
     for call in requests.approvals:
-        print(f"\n[approval] {call.tool_name}")
-        for name, value in call.args_as_dict().items():
-            indented = reveal_control_chars(str(value)).replace("\n", "\n    ")
-            print(f"  {name}: {indented}")
+        print("\n" + describe_approval(call))
         try:
-            answer = input("実行してよいですか？ [y/N] ")
+            answer = input(f"{APPROVAL_PROMPT} ")
         except EOFError:
             answer = ""
         approved = answer.strip().lower() in ("y", "yes")
