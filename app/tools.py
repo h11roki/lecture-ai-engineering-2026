@@ -5,10 +5,14 @@
 """
 
 import json
+import random
+from datetime import datetime, timedelta, timezone
 from functools import cache
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+LOG_DIR = DATA_DIR.parent / "learning_log"
+LOG_TIMEZONE = timezone(timedelta(hours=9), "JST")
 MAX_RESULTS = 3
 
 
@@ -77,3 +81,35 @@ def get_lecture_summary(lecture: int) -> str:
         available = sorted(p.stem for p in (DATA_DIR / "lectures").glob("*.md"))
         return f"第{lecture}回の要点はまだありません。用意されている回: {', '.join(available)}"
     return path.read_text(encoding="utf-8")
+
+
+def make_quiz(lecture: int) -> str:
+    """指定した回（1始まりの整数）の用語から1つを選び、確認問題と答え（用語の定義）を返す。
+
+    「第2回の確認問題を出して」のように、復習用の問題を求められたときに使う。
+    """
+    glossary = load_glossary()
+    terms = [e for e in glossary if e["lecture"] == lecture]
+    if not terms:
+        available = sorted({e["lecture"] for e in glossary})
+        return f"第{lecture}回の用語は用語集にありません。用語がある回: {', '.join(map(str, available))}"
+    entry = random.choice(terms)
+    return json.dumps(
+        {"question": f"「{entry['term']}」の意味は？", "answer": entry["definition"]},
+        ensure_ascii=False,
+    )
+
+
+def save_learning_log(title: str, body: str) -> str:
+    """学習の記録を learning_log/ の今日の日付のファイル（例: 2026-11-08.md）に追記する。
+
+    「今日学んだことを記録して」のように、学習の記録を残すよう頼まれたときに使う。
+    title には記録の見出しを、body には記録する内容を Markdown で入れる。
+    """
+    now = datetime.now(LOG_TIMEZONE)
+    heading = " ".join(title.split())
+    LOG_DIR.mkdir(exist_ok=True)
+    path = LOG_DIR / f"{now:%Y-%m-%d}.md"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(f"## {now:%H:%M} {heading}\n\n{body.strip()}\n\n")
+    return f"{path.relative_to(LOG_DIR.parent).as_posix()} に保存しました。"

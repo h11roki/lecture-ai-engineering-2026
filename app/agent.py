@@ -3,6 +3,7 @@
 使い方:
     uv run python -m app.agent "AIE2026の講座で使う「lecNN-start タグ」とは何ですか？"
     uv run python -m app.agent --trace "LoRAとQLoRAの違いは？"   # ツール呼び出しを表示
+    uv run python -m app.agent "LoRAについて学んだことを記録して"  # 保存の前に確認を求める
     uv run python -m app.agent --mcp --trace "LoRAとは？"        # 第5回: ツールを MCP サーバーから受け取る
     uv run python -m app.agent --mcp --list-tools               # 第5回: モデルに見えるツール一覧（APIキー不要）
 
@@ -14,13 +15,15 @@
 import argparse
 import inspect
 import json
+import unicodedata
 from pathlib import Path
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, AgentRunResult, DeferredToolRequests, DeferredToolResults, ToolDenied
 from pydantic_ai.exceptions import ModelHTTPError
 from fastmcp import Client
 from pydantic_ai.mcp import MCPToolset, StdioTransport
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+from pydantic_ai.models import Model
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.providers.google import GoogleProvider
@@ -38,11 +41,14 @@ INSTRUCTIONS = """\
 """
 
 # モデルは実行時に渡す（テストではAPIを呼ばない TestModel に差し替えるため）
-agent = Agent(instructions=INSTRUCTIONS)
+agent = Agent(instructions=INSTRUCTIONS, output_type=[str, DeferredToolRequests])
 agent.tool_plain(tools.search_glossary)
 agent.tool_plain(tools.get_lecture_summary)
+agent.tool_plain(tools.make_quiz)
+agent.tool_plain(requires_approval=True)(tools.save_learning_log)
 
-# TODO(第3回 演習): tools.py に make_quiz を作り、ここで登録しよう
+MAX_APPROVAL_ROUNDS = 3
+HIDDEN_CHAR_CATEGORIES = ("C", "Zl", "Zp")
 
 # 第5回: 使う MCP サーバーの設定ファイル。Claude Desktop や Cursor と同じ "mcpServers" 形式
 MCP_CONFIG = Path(__file__).resolve().parent / "mcp_servers.json"
@@ -80,7 +86,7 @@ def build_model() -> GoogleModel:
     return GoogleModel(MODEL, provider=GoogleProvider(api_key=get_api_key()))
 
 
-def print_tools(target: Agent) -> None:
+def print_tools(target: Agent[object, object]) -> None:
     """モデルに見えているツールの一覧（名前・説明文・引数）を表示する。LLM は呼ばない。
 
     TestModel（テストで使う偽モデル）にツール一覧を渡し、そこから読み出す。
@@ -109,6 +115,48 @@ def print_trace(result) -> None:
     print(f"[usage] {result.usage}")
 
 
+def reveal_control_chars(text: str) -> str:
+    """改行以外の制御文字と行区切り（\\r、端末のエスケープ \\x1b、\\u2028 など）を、そのままの見える形にする。"""
+    return "".join(
+        repr(c)[1:-1] if c != "\n" and unicodedata.category(c).startswith(HIDDEN_CHAR_CATEGORIES) else c
+        for c in text
+    )
+
+
+def ask_approvals(requests: DeferredToolRequests) -> DeferredToolResults:
+    """承認が必要なツール呼び出しを1つずつ見せ、実行してよいかを利用者に聞く。既定は「実行しない」。"""
+    approvals: dict[str, bool | ToolDenied] = {}
+    for call in requests.approvals:
+        print(f"\n[approval] {call.tool_name}")
+        for name, value in call.args_as_dict().items():
+            indented = reveal_control_chars(str(value)).replace("\n", "\n    ")
+            print(f"  {name}: {indented}")
+        try:
+            answer = input("実行してよいですか？ [y/N] ")
+        except EOFError:
+            answer = ""
+        approved = answer.strip().lower() in ("y", "yes")
+        approvals[call.tool_call_id] = True if approved else ToolDenied("利用者が実行を断りました。")
+    return requests.build_results(approvals=approvals)
+
+
+def run_with_approvals(target: Agent[object, object], question: str, model: Model) -> AgentRunResult[object]:
+    """質問を実行し、承認待ちで止まるたびに利用者に聞いて続きを実行する（MAX_APPROVAL_ROUNDS 回まで）。"""
+    result = target.run_sync(question, model=model)
+    rounds = 0
+    while isinstance(result.output, DeferredToolRequests):
+        if rounds == MAX_APPROVAL_ROUNDS:
+            raise SystemExit(f"承認待ちが {MAX_APPROVAL_ROUNDS} 回続いたので終了します。")
+        rounds += 1
+        result = target.run_sync(
+            message_history=result.all_messages(),
+            deferred_tool_results=ask_approvals(result.output),
+            model=model,
+            usage=result.usage,
+        )
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="学習支援エージェントに質問する")
     parser.add_argument("question", nargs="?")
@@ -128,7 +176,7 @@ def main() -> None:
     if args.mcp:
         print("[tools] MCP サーバー（app/mcp_servers.json）")
     try:
-        result = target.run_sync(args.question, model=build_model())
+        result = run_with_approvals(target, args.question, build_model())
     except ModelHTTPError as e:
         print(api_error_message(e.status_code, str(e.body)[:200]))
         raise SystemExit(1)
