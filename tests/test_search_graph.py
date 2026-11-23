@@ -5,6 +5,7 @@
 """
 
 import json
+from itertools import pairwise
 
 import pytest
 
@@ -24,13 +25,13 @@ def small_graph(tmp_path, monkeypatch):
     source.write_text(json.dumps([{"id": "lec01-main", "title": "講義1", "content": [
         {"section": section, "content": [
             {"id": page_ids[n], "title": titles[n], "page": n + 1, "content": titles[n]} for n in numbers]}
-        for section, numbers in (("章A", range(0, 3)), ("章B", range(3, 6)))
+        for section, numbers in (("章A", range(3)), ("章B", range(3, 6)))
     ]}], ensure_ascii=False), encoding="utf-8")
     graph = tmp_path / "graph.json"
     graph.write_text(json.dumps({
         "nodes": [{"id": page_id, "kind": "page", "title": title} for page_id, title in zip(page_ids, titles)]
         + [{"id": TERM, "kind": "term", "title": "メモリ"}],
-        "edges": [{"source": a, "target": b, "relation": "next_page"} for a, b in zip(page_ids, page_ids[1:])]
+        "edges": [{"source": a, "target": b, "relation": "next_page"} for a, b in pairwise(page_ids)]
         + [{"source": page_ids[0], "target": TERM, "relation": "mentions"},
            {"source": page_ids[4], "target": TERM, "relation": "mentions"}],
     }, ensure_ascii=False), encoding="utf-8")
