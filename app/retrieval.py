@@ -124,37 +124,23 @@ def open_index(path: Path):
         db.close()
 
 
-def query_vector(query: str) -> list[float]:
-    """検索語を確かめ、質問として埋め込む。"""
+def search_with_vector(query: str) -> tuple[list[dict], list[float]]:
+    """質問を埋め込み、近いページを最大RAG_TOP_K件と、質問の埋め込みを返す。"""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("検索語が空です。")
-    return embed_text(query.strip(), "RETRIEVAL_QUERY")
-
-
-def nearest_pages(db: sqlite3.Connection, vector: list[float], limit: int) -> list[dict]:
-    """検索DBから、ベクトルに近い順にページを最大limit件返す。"""
-    rows = db.execute("""
-        SELECT page_id, document_id, lecture, document_title, section, title, page, content,
-               vec_distance_cosine(embedding, ?) AS distance
-        FROM chunks ORDER BY distance, page_id LIMIT ?
-    """, (sqlite_vec.serialize_float32(vector), limit))
-    return [dict(row) for row in rows]
-
-
-def page_distances(db: sqlite3.Connection, vector: list[float], page_ids: list[str]) -> dict[str, float]:
-    """検索DBにある、指定したページとベクトルの距離を返す。"""
-    placeholders = ", ".join("?" for _ in page_ids)
-    rows = db.execute(
-        f"SELECT page_id, vec_distance_cosine(embedding, ?) AS distance FROM chunks WHERE page_id IN ({placeholders})",
-        (sqlite_vec.serialize_float32(vector), *page_ids),
-    )
-    return {row["page_id"]: row["distance"] for row in rows}
+    with open_index(RAG_DB) as db:
+        vector = embed_text(query.strip(), "RETRIEVAL_QUERY")
+        rows = db.execute("""
+            SELECT page_id, document_id, lecture, document_title, section, title, page, content,
+                   vec_distance_cosine(embedding, ?) AS distance
+            FROM chunks ORDER BY distance, page_id LIMIT ?
+        """, (sqlite_vec.serialize_float32(vector), RAG_TOP_K))
+        return [dict(row) for row in rows], vector
 
 
 def search(query: str) -> list[dict]:
     """質問を埋め込み、近いページを最大RAG_TOP_K件返す。"""
-    with open_index(RAG_DB) as db:
-        return nearest_pages(db, query_vector(query), RAG_TOP_K)
+    return search_with_vector(query)[0]
 
 
 def with_neighbor_pages(hits: list[dict], span: int) -> list[dict]:
@@ -187,9 +173,7 @@ def search_graph(query: str) -> dict:
             adjacent[a].add(b)
             adjacent[b].add(a)
 
-    with open_index(RAG_DB) as db:
-        vector = query_vector(query)
-        hits = nearest_pages(db, vector, RAG_TOP_K)
+    hits, vector = search_with_vector(query)
     seeds = [hit for hit in hits if hit["page_id"] in pages][:min(GRAPH_START_K, GRAPH_MAX_RESULTS)]
     seed_ids = {seed["page_id"] for seed in seeds}
     results, candidates = [], {}
@@ -220,8 +204,14 @@ def search_graph(query: str) -> dict:
                 if neighbor not in candidates or priority < candidates[neighbor][0]:
                     candidates[neighbor] = (priority, candidate)
     if GRAPH_RERANK:
+        placeholders = ", ".join("?" for _ in candidates)
         with open_index(RAG_DB) as db:
-            distances = page_distances(db, vector, list(candidates))
+            rows = db.execute(
+                f"SELECT page_id, vec_distance_cosine(embedding, ?) AS distance FROM chunks "
+                f"WHERE page_id IN ({placeholders})",
+                (sqlite_vec.serialize_float32(vector), *candidates),
+            )
+            distances = {row["page_id"]: row["distance"] for row in rows}
         expanded = sorted(
             ({**candidate, "distance": distances[page_id]}
              for page_id, (_, candidate) in candidates.items() if page_id in distances),
