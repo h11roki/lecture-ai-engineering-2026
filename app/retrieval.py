@@ -124,23 +124,37 @@ def open_index(path: Path):
         db.close()
 
 
-def rank_pages(query: str, limit: int) -> list[dict]:
-    """質問を埋め込み、近い順にページを最大limit件返す。"""
+def query_vector(query: str) -> list[float]:
+    """検索語を確かめ、質問として埋め込む。"""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("検索語が空です。")
-    with open_index(RAG_DB) as db:
-        vector = embed_text(query.strip(), "RETRIEVAL_QUERY")
-        rows = db.execute("""
-            SELECT page_id, document_id, lecture, document_title, section, title, page, content,
-                   vec_distance_cosine(embedding, ?) AS distance
-            FROM chunks ORDER BY distance, page_id LIMIT ?
-        """, (sqlite_vec.serialize_float32(vector), limit))
-        return [dict(row) for row in rows]
+    return embed_text(query.strip(), "RETRIEVAL_QUERY")
+
+
+def nearest_pages(db: sqlite3.Connection, vector: list[float], limit: int) -> list[dict]:
+    """検索DBから、ベクトルに近い順にページを最大limit件返す。"""
+    rows = db.execute("""
+        SELECT page_id, document_id, lecture, document_title, section, title, page, content,
+               vec_distance_cosine(embedding, ?) AS distance
+        FROM chunks ORDER BY distance, page_id LIMIT ?
+    """, (sqlite_vec.serialize_float32(vector), limit))
+    return [dict(row) for row in rows]
+
+
+def page_distances(db: sqlite3.Connection, vector: list[float], page_ids: list[str]) -> dict[str, float]:
+    """検索DBにある、指定したページとベクトルの距離を返す。"""
+    placeholders = ", ".join("?" for _ in page_ids)
+    rows = db.execute(
+        f"SELECT page_id, vec_distance_cosine(embedding, ?) AS distance FROM chunks WHERE page_id IN ({placeholders})",
+        (sqlite_vec.serialize_float32(vector), *page_ids),
+    )
+    return {row["page_id"]: row["distance"] for row in rows}
 
 
 def search(query: str) -> list[dict]:
     """質問を埋め込み、近いページを最大RAG_TOP_K件返す。"""
-    return rank_pages(query, RAG_TOP_K)
+    with open_index(RAG_DB) as db:
+        return nearest_pages(db, query_vector(query), RAG_TOP_K)
 
 
 def with_neighbor_pages(hits: list[dict], span: int) -> list[dict]:
@@ -173,9 +187,10 @@ def search_graph(query: str) -> dict:
             adjacent[a].add(b)
             adjacent[b].add(a)
 
-    ranked = rank_pages(query, len(pages))
-    distances = {hit["page_id"]: hit["distance"] for hit in ranked}
-    seeds = [hit for hit in ranked[:RAG_TOP_K] if hit["page_id"] in pages][:min(GRAPH_START_K, GRAPH_MAX_RESULTS)]
+    with open_index(RAG_DB) as db:
+        vector = query_vector(query)
+        hits = nearest_pages(db, vector, RAG_TOP_K)
+    seeds = [hit for hit in hits if hit["page_id"] in pages][:min(GRAPH_START_K, GRAPH_MAX_RESULTS)]
     seed_ids = {seed["page_id"] for seed in seeds}
     results, candidates = [], {}
     for rank, seed in enumerate(seeds):
@@ -205,8 +220,11 @@ def search_graph(query: str) -> dict:
                 if neighbor not in candidates or priority < candidates[neighbor][0]:
                     candidates[neighbor] = (priority, candidate)
     if GRAPH_RERANK:
+        with open_index(RAG_DB) as db:
+            distances = page_distances(db, vector, list(candidates))
         expanded = sorted(
-            ({**candidate, "distance": distances[page_id]} for page_id, (_, candidate) in candidates.items()),
+            ({**candidate, "distance": distances[page_id]}
+             for page_id, (_, candidate) in candidates.items() if page_id in distances),
             key=lambda candidate: (candidate["distance"], candidate["page_id"]),
         )
     else:

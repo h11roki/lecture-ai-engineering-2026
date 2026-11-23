@@ -1,10 +1,10 @@
 """第5回: Graph 探索の候補の選び方を、小さな資料・グラフ・固定ベクトルで確かめる。API は呼ばない。
 
-入口の次のページ（質問から遠い）と、用語「メモリ」でつながる別の章のページ（質問に近い）が
-同じ枠を争う。演習の質問2で、別の章の根拠（第3回 p.13）が前後ページに押し出された形を小さくしたもの。
+入口の次のページ（質問から遠い）と、用語「メモリ」でつながる別の章のページ（質問に近い）が、同じ枠を争う。
 """
 
 import json
+import sqlite3
 from itertools import pairwise
 
 import pytest
@@ -58,3 +58,11 @@ def test_rerank_picks_the_closest_page_among_graph_candidates(small_graph, monke
     assert page["hops"] == 2
     assert [step["id"] for step in page["path"]] == [small_graph[0], TERM, small_graph[4]]
     assert page["distance"] == pytest.approx(1 - 0.9 / (0.9**2 + 0.1**2) ** 0.5, abs=1e-6)
+
+
+def test_rerank_skips_candidates_missing_from_the_index(small_graph, monkeypatch):
+    monkeypatch.setattr(retrieval, "GRAPH_RERANK", True)
+    with sqlite3.connect(retrieval.RAG_DB) as db:
+        db.execute("DELETE FROM chunks WHERE page_id = ?", (small_graph[4],))
+    [page] = retrieval.search_graph("メモリの違い")["expanded"]
+    assert page["page_id"] == small_graph[1]
