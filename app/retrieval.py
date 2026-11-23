@@ -17,7 +17,7 @@ import sqlite_vec
 from app.config import (
     EMBEDDING_DIMENSIONS, EMBEDDING_MAX_TOKENS, EMBEDDING_MODEL,
     RAG_DB, RAG_DOCUMENT_IDS, RAG_SOURCE, RAG_TOP_K, RAG_TREE, get_api_key,
-    RAG_GRAPH, GRAPH_START_K, GRAPH_HOPS, GRAPH_MAX_RESULTS,
+    RAG_GRAPH, GRAPH_START_K, GRAPH_HOPS, GRAPH_MAX_RESULTS, GRAPH_RERANK,
 )
 
 
@@ -124,8 +124,8 @@ def open_index(path: Path):
         db.close()
 
 
-def search(query: str) -> list[dict]:
-    """質問を埋め込み、近いページを最大RAG_TOP_K件返す。"""
+def search_with_vector(query: str) -> tuple[list[dict], list[float]]:
+    """質問を埋め込み、近いページを最大RAG_TOP_K件と、質問の埋め込みを返す。"""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("検索語が空です。")
     with open_index(RAG_DB) as db:
@@ -135,7 +135,29 @@ def search(query: str) -> list[dict]:
                    vec_distance_cosine(embedding, ?) AS distance
             FROM chunks ORDER BY distance, page_id LIMIT ?
         """, (sqlite_vec.serialize_float32(vector), RAG_TOP_K))
-        return [dict(row) for row in rows]
+        return [dict(row) for row in rows], vector
+
+
+def search(query: str) -> list[dict]:
+    """質問を埋め込み、近いページを最大RAG_TOP_K件返す。"""
+    return search_with_vector(query)[0]
+
+
+def with_neighbor_pages(hits: list[dict], span: int) -> list[dict]:
+    """検索結果のそれぞれの後ろに、同じ資料の前後spanページを並べる。同じページは1度だけ返す。"""
+    if span <= 0:
+        return hits
+    pages = {(page["document_id"], page["page"]): page for page in load_pages(RAG_SOURCE)}
+    seen = {hit["page_id"] for hit in hits}
+    results = []
+    for hit in hits:
+        results.append(hit)
+        for offset in [*range(-span, 0), *range(1, span + 1)]:
+            neighbor = pages.get((hit["document_id"], hit["page"] + offset))
+            if neighbor and neighbor["page_id"] not in seen:
+                seen.add(neighbor["page_id"])
+                results.append({**neighbor, "neighbor_of": hit["page_id"]})
+    return results
 
 
 def search_graph(query: str) -> dict:
@@ -151,7 +173,8 @@ def search_graph(query: str) -> dict:
             adjacent[a].add(b)
             adjacent[b].add(a)
 
-    seeds = [hit for hit in search(query) if hit["page_id"] in pages][:min(GRAPH_START_K, GRAPH_MAX_RESULTS)]
+    hits, vector = search_with_vector(query)
+    seeds = [hit for hit in hits if hit["page_id"] in pages][:min(GRAPH_START_K, GRAPH_MAX_RESULTS)]
     seed_ids = {seed["page_id"] for seed in seeds}
     results, candidates = [], {}
     for rank, seed in enumerate(seeds):
@@ -180,7 +203,22 @@ def search_graph(query: str) -> dict:
                              "path": [{"id": n, "title": nodes[n]["title"]} for n in route]}
                 if neighbor not in candidates or priority < candidates[neighbor][0]:
                     candidates[neighbor] = (priority, candidate)
-    expanded = [candidate for _, candidate in sorted(candidates.values())]
+    if GRAPH_RERANK:
+        placeholders = ", ".join("?" for _ in candidates)
+        with open_index(RAG_DB) as db:
+            rows = db.execute(
+                f"SELECT page_id, vec_distance_cosine(embedding, ?) AS distance FROM chunks "
+                f"WHERE page_id IN ({placeholders})",
+                (sqlite_vec.serialize_float32(vector), *candidates),
+            )
+            distances = {row["page_id"]: row["distance"] for row in rows}
+        expanded = sorted(
+            ({**candidate, "distance": distances[page_id]}
+             for page_id, (_, candidate) in candidates.items() if page_id in distances),
+            key=lambda candidate: (candidate["distance"], candidate["page_id"]),
+        )
+    else:
+        expanded = [candidate for _, candidate in sorted(candidates.values())]
     return {"seeds": results, "expanded": expanded[:max(0, GRAPH_MAX_RESULTS - len(results))],
             "max_hops": GRAPH_HOPS}
 

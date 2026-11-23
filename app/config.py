@@ -19,9 +19,11 @@ RAG_GRAPH = ROOT / "data/rag_data/graph.json"
 RAG_DB = Path(os.getenv("AIE_RAG_DB", str(ROOT / "data/rag_data/index.sqlite3")))
 RAG_DOCUMENT_IDS = ("lec01-main", "lec02-main", "lec03-main")
 RAG_TOP_K = 5
+RAG_NEIGHBOR_PAGES = int(os.getenv("AIE_RAG_NEIGHBORS") or 0)
 GRAPH_START_K = 3
 GRAPH_HOPS = 2
 GRAPH_MAX_RESULTS = 10
+GRAPH_RERANK = os.getenv("AIE_GRAPH_RERANK") == "1"
 EMBEDDING_MODEL = "gemini-embedding-001"
 EMBEDDING_DIMENSIONS = 768
 # 2,048トークンの上限に対し、タスク指定等の分を残す。超過時は切り捨てず停止する。
