@@ -8,5 +8,5 @@ root_agent = Agent(
     model=MODEL,
     name="glossary_agent",
     instruction=INSTRUCTIONS,
-    tools=[tools.search_glossary, tools.get_lecture_summary, tools.make_quiz],
+    tools=[tools.search_materials, tools.make_quiz],
 )
