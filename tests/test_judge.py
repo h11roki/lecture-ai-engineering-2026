@@ -4,6 +4,9 @@
 「採点 → 人のラベルとの比較 → 要確認・不一致の集計」が通ることを確かめる。
 """
 
+from pydantic_ai.messages import ModelResponse, ToolCallPart
+from pydantic_ai.models.function import FunctionModel
+
 from app import judge
 from app.judge import (
     ALL_CRITERIA,
@@ -12,6 +15,7 @@ from app.judge import (
     build_judge,
     build_test_model,
     check_lecture_mark,
+    generate_answers,
     judge_cases,
     load_labels,
     overall,
@@ -68,3 +72,16 @@ def test_judge_pipeline_with_fake_model():
     assert summary["coverage"]["covered"] + len({r["id"] for r in summary["review"]}) == 10
     for m in summary["mismatches"]:
         assert m["kind"] in ("見逃し", "過検出")
+
+
+def test_generated_answer_shows_the_pending_approval_like_the_cli(monkeypatch, log_dir):
+    def save_with_lecture_in_body(messages, info) -> ModelResponse:
+        return ModelResponse(parts=[ToolCallPart("save_learning_log", {"title": "LoRA", "body": "第2回で学んだ\n要点"})])
+
+    monkeypatch.setattr("app.agent.build_model", lambda: FunctionModel(save_with_lecture_in_body))
+    [case] = generate_answers([{"id": "01", "question": "LoRAについて学んだことを記録して"}], wait=0)
+    assert case["answer"] == (
+        "[approval] save_learning_log\n  title: LoRA\n  body: 第2回で学んだ\n    要点\n実行してよいですか？ [y/N]"
+    )
+    assert check_lecture_mark(case["answer"]) == "fail"
+    assert not log_dir.exists()
