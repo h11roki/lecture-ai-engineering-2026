@@ -159,7 +159,7 @@ def search(query: str) -> list[dict]:
 
 def with_neighbor_pages(hits: list[dict], span: int) -> list[dict]:
     """検索結果のそれぞれの後ろに、同じ資料の前後spanページを並べる。同じページは1度だけ返す。"""
-    if span == 0:
+    if span <= 0:
         return hits
     pages = {(page["document_id"], page["page"]): page for page in load_pages(RAG_SOURCE)}
     seen = {hit["page_id"] for hit in hits}
