@@ -17,7 +17,7 @@ import sqlite_vec
 from app.config import (
     EMBEDDING_DIMENSIONS, EMBEDDING_MAX_TOKENS, EMBEDDING_MODEL,
     RAG_DB, RAG_DOCUMENT_IDS, RAG_SOURCE, RAG_TOP_K, RAG_TREE, get_api_key,
-    RAG_GRAPH, GRAPH_START_K, GRAPH_HOPS, GRAPH_MAX_RESULTS,
+    RAG_GRAPH, GRAPH_START_K, GRAPH_HOPS, GRAPH_MAX_RESULTS, GRAPH_RERANK,
 )
 
 
@@ -124,8 +124,8 @@ def open_index(path: Path):
         db.close()
 
 
-def search(query: str) -> list[dict]:
-    """質問を埋め込み、近いページを最大RAG_TOP_K件返す。"""
+def rank_pages(query: str, limit: int) -> list[dict]:
+    """質問を埋め込み、近い順にページを最大limit件返す。"""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("検索語が空です。")
     with open_index(RAG_DB) as db:
@@ -134,8 +134,13 @@ def search(query: str) -> list[dict]:
             SELECT page_id, document_id, lecture, document_title, section, title, page, content,
                    vec_distance_cosine(embedding, ?) AS distance
             FROM chunks ORDER BY distance, page_id LIMIT ?
-        """, (sqlite_vec.serialize_float32(vector), RAG_TOP_K))
+        """, (sqlite_vec.serialize_float32(vector), limit))
         return [dict(row) for row in rows]
+
+
+def search(query: str) -> list[dict]:
+    """質問を埋め込み、近いページを最大RAG_TOP_K件返す。"""
+    return rank_pages(query, RAG_TOP_K)
 
 
 def with_neighbor_pages(hits: list[dict], span: int) -> list[dict]:
@@ -168,7 +173,9 @@ def search_graph(query: str) -> dict:
             adjacent[a].add(b)
             adjacent[b].add(a)
 
-    seeds = [hit for hit in search(query) if hit["page_id"] in pages][:min(GRAPH_START_K, GRAPH_MAX_RESULTS)]
+    ranked = rank_pages(query, len(pages))
+    distances = {hit["page_id"]: hit["distance"] for hit in ranked}
+    seeds = [hit for hit in ranked[:RAG_TOP_K] if hit["page_id"] in pages][:min(GRAPH_START_K, GRAPH_MAX_RESULTS)]
     seed_ids = {seed["page_id"] for seed in seeds}
     results, candidates = [], {}
     for rank, seed in enumerate(seeds):
@@ -197,7 +204,13 @@ def search_graph(query: str) -> dict:
                              "path": [{"id": n, "title": nodes[n]["title"]} for n in route]}
                 if neighbor not in candidates or priority < candidates[neighbor][0]:
                     candidates[neighbor] = (priority, candidate)
-    expanded = [candidate for _, candidate in sorted(candidates.values())]
+    if GRAPH_RERANK:
+        expanded = sorted(
+            ({**candidate, "distance": distances[page_id]} for page_id, (_, candidate) in candidates.items()),
+            key=lambda candidate: (candidate["distance"], candidate["page_id"]),
+        )
+    else:
+        expanded = [candidate for _, candidate in sorted(candidates.values())]
     return {"seeds": results, "expanded": expanded[:max(0, GRAPH_MAX_RESULTS - len(results))],
             "max_hops": GRAPH_HOPS}
 
